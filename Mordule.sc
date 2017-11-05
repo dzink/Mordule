@@ -2,16 +2,18 @@
  * Virtual analog modulation model.
  * Mordule represents a buffer and a list of symbols which correlate to indices of that buffer, along with helper methods to model classic modulations, including modulation matrices. Is also able to create cyclical modulation graphs.
  *
- * @TODO Values may be delayed one control cycle. How to solve this?
+ * @TODO Values may be delayed one control cycle. How to solve this? Is this something I should even worry about?
+ * @TODO Make this work audio-rate
  */
 Mordule {
+    var buffer;
+    var <channels;
     var <destinations;
     var <keyList;
-    var m_buffer;
-    var m_channels;
     var <>includeNilIndex;
-    var m_taps;
     var <sources;
+
+    var m_taps;
 
     /**
      * Symbols in sources and destinations that overlap will be added as both sources and destinations.
@@ -44,14 +46,50 @@ Mordule {
     init {
         arg a_sources, a_destinations, a_channels, a_buffer, a_includeNilIndex;
         includeNilIndex = a_includeNilIndex.asBoolean;
-        m_channels = a_channels;
-        m_buffer = a_buffer;
+        buffer = a_buffer;
         m_taps = [];
         keyList = [];
         destinations = [];
         sources = [];
+        this.channels = a_channels;
         this.addSources(a_sources);
         this.addDestinations(a_destinations);
+    }
+
+    /**
+     * Getter for the buffer property.
+     */
+    buffer {
+        this.ensureBuffer();
+        ^ buffer;
+    }
+
+    /**
+     * Setter for the buffer property.
+     */
+    buffer_ {
+        arg a_buffer;
+        if (a_buffer.isNil.not) {
+            buffer = a_buffer;
+            this.ensureBuffer();
+        } {
+            buffer = nil;
+        };
+    }
+
+    /**
+     * Setter for channels.
+     */
+    channels_ {
+        arg a_channels;
+        if (a_channels != channels && {
+            (buffer.isKindOf(Buffer) || {
+                buffer.isKindOf(LocalBuf)
+            })
+        }) {
+            Exception('Buffer already allocated. Cannot alter the number of channels.').throw;
+        };
+        channels = a_channels;
     }
 
     addDestinations {
@@ -90,20 +128,8 @@ Mordule {
         ^ BufChannels.kr(this.buffer);
     }
 
-    buffer {
-        this.ensureBuffer();
-        ^ m_buffer;
-    }
-
     bufFrames {
         ^ BufFrames.kr(this.buffer);
-    }
-
-    /**
-     * Get the number of channels in the buffer.
-     */
-    channels {
-        ^ m_channels;
     }
 
     /**
@@ -297,13 +323,20 @@ Mordule {
 
     /**
      * If there is no buffer, create a local buf. This is checked before each
-     * buffer read or write.
+     * buffer read or write. Also make sure the buffer is of appropriate class to be passed to a BufRd/BufWr UGen.
      */
     ensureBuffer {
-        if (m_buffer.isNil) {
+        if (buffer.isNil) {
             // Add 1 to account for nil index.
-            m_buffer = LocalBuf(keyList.size + includeNilIndex.asInteger, m_channels).clear;
+            buffer = LocalBuf(keyList.size + includeNilIndex.asInteger, channels).clear;
         };
+        if ((buffer.isKindOf(Buffer) ||  {
+                buffer.isKindOf(UGen) || {
+                    buffer.isKindOf(LocalBuf)
+                }
+            }).not {
+            Exception('Specified buffer must be of type Buffer, UGen, or LocalBuf.').throw;
+        });
     }
 
     hasDestination {
@@ -409,7 +442,7 @@ Mordule {
         arg index, clip = 1, scale = 1, insertValue = nil;
         var v;
         this.ensureBuffer();
-        v = BufRd.kr(m_channels, m_buffer, index, 1, 0);
+        v = BufRd.kr(channels, buffer, index, 1, 0);
         if (includeNilIndex) {
             v = Select.kr(BinaryOpUGen('==', 0, index), [v, 0]);
         };
@@ -470,7 +503,7 @@ Mordule {
     writeIndex {
         arg index, value;
         this.ensureBuffer();
-        if (value.size > m_channels) {
+        if (value.size > channels) {
             warn('WARNING: adding more values than channels');
         };
         if (includeNilIndex) {
@@ -479,7 +512,7 @@ Mordule {
 
         // value should be an array for wrapExtend to work.
         value = if (value.isKindOf(Collection), {value}, {[value]});
-        value = wrapExtend(value, m_channels);
+        value = wrapExtend(value, channels);
 
         BufWr.kr(value, this.buffer, index);
     }
