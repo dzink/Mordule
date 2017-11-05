@@ -1,23 +1,33 @@
-class Mordule[slot] {
-    var <keyList;
-    var _buffer;
-    var _indices;
-    var _taps = [];
-    var <sources = [];
-    var <destinations = [];
-    var <_channels;
+/**
+ * Class to provide easy access to creating cyclical modulation graphs using
+ * a buffer. The buffer has the same number of channels as each modulation
+ * source/destination has values.
+ * @TODO Values may be delayed one control cycle. How to solve this?
+ */
+Mordule[slot] : Dictionary {
+    var destinations;
+    var keyList;
+    var m_buffer;
+    var m_channels;
+    var m_indices;
+    var m_taps;
+    var sources;
 
     *new {
         arg keys, channels = 1, buffer = nil;
-        _buffer = buffer;
         ^ super.new.init(keys, channels, buffer);
     }
 
     init {
         arg keys, channels, buffer;
         keyList = keys;
-        _channels = channels;
-        _buffer = buffer;
+        m_channels = channels;
+        m_buffer = buffer;
+        m_indices = [];
+        m_taps = [];
+        sources = [];
+        destinations = [];
+        this.initIndicesDictionary;
     }
 
     /**
@@ -25,8 +35,8 @@ class Mordule[slot] {
      */
     at {
         arg key;
-        if (this._indexOf(key).isNil.not) {
-            ^ MorduleNode.new(this, this._indexOf(key));
+        if (this.indexOf(key).isNil.not) {
+            ^ MorduleNode.new(this, this.indexOf(key));
         };
     }
 
@@ -39,30 +49,30 @@ class Mordule[slot] {
     }
 
     bufChannels {
-        this._ensureBuffer();
-        ^ BufChannels.kr(_buffer);
+        this.ensureBuffer();
+        ^ BufChannels.kr(m_buffer);
     }
 
     buffer {
-        this._ensureBuffer();
-        ^ _buffer;
+        this.ensureBuffer();
+        ^ m_buffer;
     }
 
     bufFrames {
-        this._ensureBuffer();
-        ^ BufFrames.kr(_buffer);
+        this.ensureBuffer();
+        ^ BufFrames.kr(m_buffer);
     }
 
     bufNum {
-        this._ensureBuffer();
-        ^ BufNum.kr(_buffer);
+        this.ensureBuffer();
+        ^ BufNum.kr(m_buffer);
     }
 
     /**
      * Get the number of channels in the buffer.
      */
     channels {
-        ^ _channels;
+        ^ m_channels;
     }
 
     /**
@@ -72,9 +82,7 @@ class Mordule[slot] {
      */
     clear {
         arg key;
-        var index;
-        index = this._indexOf(key);
-        this._clearIndex(index);
+        this.at(key).clear();
     }
 
     /**
@@ -89,9 +97,8 @@ class Mordule[slot] {
     insert {
         arg key, value, scale = 1;
         var index;
-        index = this._indexOf(key);
-        this._warnDestination(key);
-        this._insertIndex(index, value, scale);
+        var k = this.at(key);
+        k.insert(value, scale);
     }
 
     /**
@@ -110,8 +117,8 @@ class Mordule[slot] {
     insertSelect {
         arg n, keys, value, scale = 1;
         var index;
-        index = this._indexSelect(n, keys);
-        this._insertIndex(index, value);
+        index = this.indexSelect(n, keys);
+        this.insertIndex(index, value);
     }
 
     /**
@@ -152,9 +159,7 @@ class Mordule[slot] {
      */
     read {
         arg key, clip = 1, scale = 1;
-        var index;
-        index = this._indexOf(key);
-        ^ this._readIndex(index, clip, scale);
+        ^ this.at(key).read(clip, scale);
     }
 
     /**
@@ -177,8 +182,8 @@ class Mordule[slot] {
     readSelect {
         arg n, keys, clip = 1, scale = 1;
         var index;
-        index = this._indexSelect(n, keys);
-        ^ this._readIndex(index, clip, scale);
+        index = this.indexSelect(n, keys);
+        ^ this.readIndex(index, clip, scale);
     }
 
     /**
@@ -195,15 +200,8 @@ class Mordule[slot] {
      *   The value of a modulation source key.
      */
     tap {
-        arg key, value, clip = 1, scale = 1;
-        var index;
-        if (_taps.include(key)) {
-            warn('The key ' ++ key ++ ' has already been tapped.');
-        };
-        _taps.add(key);
-        this._warnDestination(key);
-        index = this._indexOf(key);
-        ^ this._writeIndex(index, value, clip, scale);
+        arg key, clip = 1, scale = 1;
+        ^ this.at(key).tap(clip, scale);
     }
 
     /**
@@ -211,14 +209,12 @@ class Mordule[slot] {
      * @param Symbol key
      *   The key to read from.
      * @param float value
-     *   The new value for the modulation source key.
+     *   The new value for the modulation source key. If this is not the same
+     *   size as expected, it will wrapExtend as needed.
      */
     write {
         arg key, value;
-        var index;
-        index = this._indexOf(key);
-        this._warnSource(key);
-        this._writeIndex(index, value);
+        ^ this.at(key).write(value);
     }
 
     /**
@@ -231,44 +227,45 @@ class Mordule[slot] {
      *   The list of possible destinations. The indices here are
      */
     writeSelect {
-        arg n, keys;
+        arg n, keys, value;
         var index;
-        index = this._indexSelect(n, keys);
-        ^ this._writeIndex(index, value);
+        index = this.indexSelect(n, keys);
+        ^ this.writeIndex(index, value);
     }
 
-    _clearIndex {
+    clearIndex {
         arg index;
-        ^ this.write(index, 0);
+        ^ this.writeIndex(index, 0);
     }
 
-    _clipAndScale {
+    clipAndScale {
         arg value, clip = 1, scale = 1;
         if (clip.isNil.not) {
-            v = clip(clip.neg, clip);
+            value = value.clip(clip.neg, clip);
         };
         if (scale != 1 || { scale.isNil.not; }) {
-            v = v * scale;
-        }
-        ^ v;
+            value = value * scale;
+        };
+        ^ value;
     }
 
     /**
      * If there is no buffer, create a local buf. This is checked before each
      * buffer read or write.
      */
-    _ensureBuffer {
-        if (_buffer.isNil) {
-            _buffer = LocalBuf(keyList.size, _channels).clear;
+    ensureBuffer {
+        if (m_buffer.isNil) {
+            'Creating fresh buffer'.postln;
+            m_buffer = LocalBuf(keyList.size, m_channels).clear;
         };
     }
 
-    _hasDestination {
+    hasDestination {
         arg key;
         ^ (destinations.size == 0 || { destinations.includes(key); });
     }
 
-    _hasSource {
+    hasSource {
         arg key;
         ^ (sources.size == 0 || { sources.includes(key); });
     }
@@ -283,10 +280,10 @@ class Mordule[slot] {
      * @return UGen
      *   A buffer index that represents the selected key.
      */
-    _indexSelect {
+    indexSelect {
         arg n, keys;
         var a, select;
-        a = this._indicesOf(keys);
+        a = this.indicesOf(keys);
 
         select = Select.kr(n, a);
         ^ select;
@@ -299,11 +296,11 @@ class Mordule[slot] {
      * @return Array
      *   An array of buffer indices that represents the given key Array.
      */
-    _indicesOf {
+    indicesOf {
         arg keys;
-        indicesOf = keys.collect({
+        var indicesOf = keys.collect({
             arg key;
-            this._indexOf(key);
+            this.indexOf(key);
         });
         ^ indicesOf;
     }
@@ -315,7 +312,7 @@ class Mordule[slot] {
      * @return integer
      *   The buffer index that represents the given key.
      */
-    _indexOf {
+    indexOf {
         arg key;
         var index = keyList.indexOf(key);
         if (index.isNil) {
@@ -326,54 +323,66 @@ class Mordule[slot] {
     /**
      * Generate indices dictionary after each value is added.
      */
-    _initIndicesDictionary {
+    initIndicesDictionary {
         var indices = Dictionary[];
         keyList.do {
             arg key, index;
             indices[key] = index;
-        }
-        _indices = indices;
+        };
+        m_indices = indices;
     }
 
     /**
      * @see insert, only uses a buffer index instead of a modulation key.
      */
-    _insertIndex {
+    insertIndex {
         arg index, value, scale = 1;
-        var v = this._readIndex(index, nil, nil, value);
-        ^ this._writeIndex(index, v * scale);
+        var v = this.readIndex(index, nil, nil, value);
+        ^ this.writeIndex(index, v * scale);
     }
 
     /**
      * @see read, only uses a buffer index instead of a modulation key.
      */
-    _readIndex {
+    readIndex {
         arg index, clip = 1, scale = 1, insertValue = nil;
         var v;
-        this._ensureBuffer();
-        v = BufRd.kr(BufChannels.ir(buffer), buffer, index, n);
+        this.ensureBuffer();
+        v = BufRd.kr(BufChannels.ir(m_buffer), m_buffer, index, loop: 1, interpolation: 1);
         if (insertValue.isNil.not) {
             v = v + insertValue;
         };
-        ^ this._clipAndScale(v, clip, scale);
+        ^ this.clipAndScale(v, clip, scale);
+    }
+
+    /**
+     * A running list of tapped destinations. This will trigger a
+     * warning if a destination is tapped more than once.
+     */
+    registerTap {
+        arg key;
+        if (m_taps.includes(key)) {
+            warn('The key ' ++ key ++ ' has already been tapped.');
+        };
+        m_taps.add(key);
     }
 
     /**
      * @see tap, only uses a buffer index instead of a modulation key.
      */
-    _tapIndex {
+    tapIndex {
         arg index, clip = 1, scale = 1;
-        var v = this._readIndex(index, clip, scale);
-        this._clear(index);
+        var v = this.readIndex(index, clip, scale);
+        this.clear(index);
         ^ v;
     }
 
     /**
      * Trigger a warning if the key is not a listed destination.
      */
-    _warnDestinations {
+    warnDestinations {
         arg key;
-        if (this._hasDestination.not) {
+        if (this.hasDestination.not) {
             warn(key ++ ' is not a listed destination.');
         };
     }
@@ -381,9 +390,9 @@ class Mordule[slot] {
     /**
      * Trigger a warning if the key is not a listed source.
      */
-    _warnSources {
+    warnSources {
         arg key;
-        if (this._hasSource.not) {
+        if (this.hasSource.not) {
             warn(key ++ ' is not a listed source.');
         };
     }
@@ -391,10 +400,15 @@ class Mordule[slot] {
     /**
      * @see write, only uses a buffer index instead of a modulation key.
      */
-    _writeIndex {
-        arg index, n;
-        this._ensureBuffer();
-        ^ BufWrite.kr(BufChannels.ir(buffer), buffer, index, n);
+    writeIndex {
+        arg index, value;
+        this.ensureBuffer();
+        if (value.size > m_channels) {
+            warn('WARNING: adding more values than channels');
+        };
+        value = if (value.isKindOf(Collection), {value}, {[value]});
+        value = wrapExtend(value, m_channels);
+        ^ BufWr.kr(value, m_buffer, index);
     }
 }
 
@@ -404,46 +418,49 @@ class Mordule[slot] {
  * myMordule.mod.tap()
  * @see Mordule
  */
-class MorduleNode {
+MorduleNode {
 
     var mordule;
+    var index;
     var key;
 
     *new {
-        arg m, k;
-        ^ super.new.init(m, k);
+        arg m, i, k;
+        ^ super.new.init(m, i, k);
     }
 
     init {
-        arg m, k;
+        arg m, i, k;
         mordule = m;
+        index = i;
         key = k;
     }
 
     clear {
-        ^ mordule.clear(key);
+        ^ mordule.clearIndex(index);
     }
 
     insert {
-        arg value;
-        mordule._warnDestinations(key);
-        ^ mordule.insert(key, value);
+        arg value, scale = 1;
+        //mordule.warnDestinations(key);
+        ^ mordule.insertIndex(key, value, scale);
     }
 
     read {
         arg clip = 1, scale = 1;
-        ^ mordule.read(key, clip, scale);
+        ^ mordule.readIndex(index, clip, scale);
     }
 
     tap {
         arg clip = 1, scale = 1;
-        mordule._warnDestinations(key);
-        ^ mordule.tap(key, clip, scale);
+        mordule.warnDestinations(key);
+        mordule.registerTap(key);
+        ^ mordule.tapIndex(index, clip, scale);
     }
 
     write {
         arg value;
-        mordule._warnSources(key);
-        ^ mordule.write(key, value);
+        mordule.warnSources(key);
+        ^ mordule.writeIndex(index, value);
     }
 }
