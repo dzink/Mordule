@@ -1,6 +1,9 @@
 /**
  * Virtual analog modulation model.
- * Mordule represents a buffer and a list of symbols which correlate to indices of that buffer, along with helper methods to model classic modulations, including modulation matrices. Is also able to create cyclical modulation graphs.
+ * Mordule represents a buffer and a list of symbols which correlate to indices
+ * of that buffer, along with helper methods to model classic modulations,
+ * including modulation matrices. Is also able to create circular modulation
+ * graphs.
  *
  * @TODO Values may be delayed one control cycle. How to solve this? Is this something I should even worry about?
  * @TODO Make this work audio-rate
@@ -17,17 +20,21 @@ Mordule {
     var m_taps;
 
     /**
-     * Symbols in sources and destinations that overlap will be added as both sources and destinations.
+     * Symbols in sources and destinations that overlap will be added as both
+     * sources and destinations.
      * @param Collection sources
      *   A collection of Symbols that will be registered as sources.
      * @param Collection destinations
      *   A collection of Symbols that will be registered as destinations.
      * @param integer channels
-     *   The number of channels to create in the buffer. Useful for stereo LFO's, etc. This number is universal across the whole Mordule instance.
+     *   The number of channels to create in the buffer. Useful for stereo
+     *   LFO's, etc. This number is universal across the whole Mordule instance.
      * @param Buffer buffer
-     *   Explicitly pass in a Buffer. An error will be thrown if it's not the same size as the number of keys (@TODO)! @TODO also test to make sure it's a buffer or nil.
+     *   Explicitly pass in a Buffer. An error will be thrown if it's not the *   same size as the number of keys (@TODO)! @TODO also test to make sure
+     *   it's a buffer or nil.
      * @param Boolean includeNilIndex
-     *   Whether to include a location in the buffer that does not act as a modulator. Useful for selectInsert, selectWrite, etc methods, when one of the options should do nothing.
+     *   Whether to include a location in the buffer that does not act as a
+     *   modulator. Useful for selectInsert, selectWrite, etc methods, when one *   of the options should do nothing.
      * @return Mordule
      *   The new Mordule instance.
      */
@@ -37,7 +44,8 @@ Mordule {
     }
 
     /**
-     * Handle the scenario when the user doesn't care about the difference between sources and destinations. @see Mordule.new()
+     * Handle the scenario when the user doesn't care about the difference
+     * between sources and destinations. @see Mordule.new()
      */
     *newMixed {
         arg keys, channels = 1, buffer = nil, includeNilIndex = true;
@@ -125,10 +133,20 @@ Mordule {
         this.addKeys(sources);
     }
 
+    /**
+     * @return UGen
+     *   A modulatable number of channels.
+     * @TODO kr vs ir?
+     */
     bufChannels {
         ^ BufChannels.kr(this.buffer);
     }
 
+    /**
+     * @return UGen
+     *   A modulatable number of frames.
+     * @TODO kr vs ir?
+     */
     bufFrames {
         ^ BufFrames.kr(this.buffer);
     }
@@ -180,7 +198,8 @@ Mordule {
     }
 
     /**
-     * Like @see insertSelect, only scales n appropriately from -1..1 to the number of keys.
+     * Like @see insertSelect, only scales n appropriately from -1..1 to the
+     * number of keys.
      */
     insertSelectRange {
         arg n, keys, value, scale = 1;
@@ -216,7 +235,8 @@ Mordule {
     }
 
     /**
-     * Like @see insertSelect, only scales indices appropriately from -1..1 to the number of keys.
+     * Like @see insertSelect, only scales indices appropriately from -1..1 to
+     * the number of keys.
      */
     matrixReadAndInsertRange {
         arg sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale = 1;
@@ -280,7 +300,8 @@ Mordule {
         ^ this.readIndex(index, clip, scale);
     }
     /**
-     * Like @see readSelect, only scales n appropriately from -1..1 to the number of keys.
+     * Like @see readSelect, only scales n appropriately from -1..1 to the
+     * number of keys.
      */
     readSelectRange {
         arg n, keys, clip = 1, scale = 1;
@@ -340,7 +361,8 @@ Mordule {
     }
 
     /**
-     * Like @see writeSelect, only scales n appropriately from -1..1 to the number of keys.
+     * Like @see writeSelect, only scales n appropriately from -1..1 to the
+     * number of keys.
      */
      writeSelectRange {
          arg n, keys, value;
@@ -348,11 +370,15 @@ Mordule {
          ^ this.writeSelect(n, keys, value);
      }
 
+    /**
+     * Writes 0 to an index.
+     */
     clearIndex {
         arg index;
-        ^ this.writeIndex(index, 0);
+        this.writeIndex(index, 0);
     }
 
+    // This saves a few cycles by determining if scaling/clipping is needed.
     clipAndScale {
         arg value, clip = 1, scale = 1;
         if (clip.isNil.not) {
@@ -366,7 +392,8 @@ Mordule {
 
     /**
      * If there is no buffer, create a local buf. This is checked before each
-     * buffer read or write. Also make sure the buffer is of appropriate class to be passed to a BufRd/BufWr UGen.
+     * buffer read or write. Also make sure the buffer is of appropriate class
+     * to be passed to a BufRd/BufWr UGen.
      */
     ensureBuffer {
         if (buffer.isNil) {
@@ -382,6 +409,12 @@ Mordule {
         });
     }
 
+    /**
+     * Returns whether an array of sources are all in the destination array.
+     * If the array is empty, always return true. @TODO ???
+     * Also counts keys that count as nil as being included implicitly if this
+     * Mordule is of the @see includeNilIndex variety. @see isNilKey.
+     */
     hasDestination {
         arg keys;
         if (destinations.size == 0) {
@@ -397,6 +430,12 @@ Mordule {
         ^ true;
     }
 
+    /**
+     * Returns whether an array of sources are all in the source array.
+     * If the array is empty, always return true. @TODO ???
+     * Also counts keys that count as nil as being included implicitly if this
+     * Mordule is of the @see includeNilIndex variety. @see isNilKey.
+     */
     hasSource {
         arg keys;
         if (sources.size == 0) {
@@ -561,7 +600,12 @@ Mordule {
     }
 
     /**
-     * Determine if a mixed value should be interpreted as the nil index (the nil index is in every Mordule buffer, and is used to sink values that should not be modulated; this is useful for selectInsert, selectWrite, etc methods, when one of the options should be to do nothing). There are a few ways to indicate the nil index: 0, false, nil, and \nil are all acceptable.
+     * Determine if a mixed value should be interpreted as the nil index (the
+     * nil index is in every Mordule buffer, and is used to sink values that
+     * should not be modulated; this is useful for selectInsert, selectWrite,
+     * etc methods, when one of the options should be to do nothing). There are
+     * a few ways to indicate the nil index: 0, false, nil, and \nil are all
+     * acceptable.
      * @param mixed key
      *   The key to test.
      * @return Boolean
