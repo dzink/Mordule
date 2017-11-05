@@ -167,7 +167,7 @@ Mordule {
      * @param float scale;
      *   A modifier to scale the amount to add to the destination.
      */
-    matrixReadInsert {
+    matrixReadAndInsert {
         arg inIndex, inKeys, outIndex, outKeys, scale = 1;
         var v;
         v = this.readSelect(inIndex, inKeys);
@@ -190,6 +190,19 @@ Mordule {
     read {
         arg key, clip = 1, scale = 1;
         ^ this.readIndex(this.indexOf(key), clip, scale);
+    }
+
+    /**
+     * Reads one modulation source and inserts it directly into a destination.
+     */
+    readAndInsert {
+        arg sourceKey, destinationKey, scale = 1;
+        var source;
+
+        // No need to enforceDestinations, that is done via insert.
+        this.enforceSources(sourceKey);
+        source = this.read(sourceKey);
+        this.insert(destinationKey, source, scale);
     }
 
     /**
