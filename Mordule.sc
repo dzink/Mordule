@@ -4,6 +4,7 @@
  *
  * @TODO Values may be delayed one control cycle. How to solve this? Is this something I should even worry about?
  * @TODO Make this work audio-rate
+ * @TODO Make some of these methods private.
  */
 Mordule {
     var buffer;
@@ -173,6 +174,7 @@ Mordule {
     insertSelect {
         arg n, keys, value, scale = 1;
         var index;
+        this.enforceDestinations(keys);
         index = this.indexSelect(n, keys);
         this.insertIndex(index, value);
     }
@@ -205,6 +207,10 @@ Mordule {
     matrixReadAndInsert {
         arg sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale = 1;
         var v;
+
+        // Destinations are enforced in insertSelect.
+        this.enforceSources(sourceKeys);
+
         v = this.readSelect(sourceIndex, sourceKeys);
         this.insertSelect(destinationIndex, destinationKeys, v * scale);
     }
@@ -328,6 +334,7 @@ Mordule {
     writeSelect {
         arg n, keys, value;
         var index;
+        this.enforceSources(keys);
         index = this.indexSelect(n, keys);
         ^ this.writeIndex(index, value);
     }
