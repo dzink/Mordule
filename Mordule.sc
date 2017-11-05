@@ -1,51 +1,89 @@
 /**
- * Class to provide easy access to creating cyclical modulation graphs using
- * a buffer. The buffer has the same number of channels as each modulation
- * source/destination has values.
+ * Virtual analog modulation model.
+ * Mordule represents a buffer and a list of symbols which correlate to indices of that buffer, along with helper methods to model classic modulations, including modulation matrices. Is also able to create cyclical modulation graphs.
+ *
  * @TODO Values may be delayed one control cycle. How to solve this?
  */
-Mordule[slot] : Dictionary {
-    var destinations;
-    var keyList;
+Mordule {
+    var <destinations;
+    var <keyList;
     var m_buffer;
     var m_channels;
-    var m_indices;
+    var <>includeNilIndex;
     var m_taps;
-    var sources;
+    var <sources;
 
+    /**
+     * Symbols in sources and destinations that overlap will be added as both sources and destinations.
+     * @param Collection sources
+     *   A collection of Symbols that will be registered as sources.
+     * @param Collection destinations
+     *   A collection of Symbols that will be registered as destinations.
+     * @param integer channels
+     *   The number of channels to create in the buffer. Useful for stereo LFO's, etc. This number is universal across the whole Mordule instance.
+     * @param Buffer buffer
+     *   Explicitly pass in a Buffer. An error will be thrown if it's not the same size as the number of keys (@TODO)! @TODO also test to make sure it's a buffer or nil.
+     * @param Boolean includeNilIndex
+     *   Whether to include a location in the buffer that does not act as a modulator. Useful for selectInsert, selectWrite, etc methods, when one of the options should do nothing.
+     * @return Mordule
+     *   The new Mordule instance.
+     */
     *new {
-        arg keys, channels = 1, buffer = nil;
-        ^ super.new.init(keys, channels, buffer);
+        arg sources, destinations, channels = 1, buffer = nil, includeNilIndex = true;
+        ^ super.new.init(sources, destinations, channels, buffer, includeNilIndex);
+    }
+
+    /**
+     * Handle the scenario when the user doesn't care about the difference between sources and destinations. @see Mordule.new()
+     */
+    *newMixed {
+        arg keys, channels = 1, buffer = nil, includeNilIndex = true;
+        ^ super.new.init(keys, keys, channels, buffer, includeNilIndex);
     }
 
     init {
-        arg keys, channels, buffer;
-        keyList = keys;
-        m_channels = channels;
-        m_buffer = buffer;
-        m_indices = [];
+        arg a_sources, a_destinations, a_channels, a_buffer, a_includeNilIndex;
+        includeNilIndex = a_includeNilIndex.asBoolean;
+        m_channels = a_channels;
+        m_buffer = a_buffer;
         m_taps = [];
-        sources = [];
+        keyList = [];
         destinations = [];
-        this.initIndicesDictionary;
+        sources = [];
+        this.addSources(a_sources);
+        this.addDestinations(a_destinations);
     }
 
-    /**
-     * Allow slotted keys, a la myMordule[key].tap().
-     */
-    at {
-        arg key;
-        if (this.indexOf(key).isNil.not) {
-            ^ MorduleNode.new(this, this.indexOf(key), key);
-        };
+    addDestinations {
+        arg ... keys;
+        keys = if (keys.isKindOf(Collection)) {keys} {[keys]};
+        keys.deepCollect(inf, {
+            arg key;
+            destinations = if (this.isNilKey(key).not) {destinations.add(key)} {destinations};
+        });
+        destinations = destinations.as(Set).as(Array);
+        this.addKeys(destinations);
     }
 
-    /**
-     * Allow usage of keys like properties, a la myMordule.key.tap().
-     */
-    doesNotUnderstand {
-        arg key;
-        ^ this.at(key);
+    addKeys {
+        arg ... keys;
+        keys = if (keys.isKindOf(Collection)) {keys} {[keys]};
+        keys.deepCollect(inf, {
+            arg key;
+            keyList = if (this.isNilKey(key).not) {keyList.add(key)} {keyList};
+        });
+        keyList = keyList.as(Set).as(Array);
+    }
+
+    addSources {
+        arg ... keys;
+        keys = if (keys.isKindOf(Collection)) {keys} {[keys]};
+        keys.deepCollect(inf, {
+            arg key;
+            sources = if (this.isNilKey(key).not) {sources.add(key)} {sources};
+        });
+        sources = sources.as(Set).as(Array);
+        this.addKeys(sources);
     }
 
     bufChannels {
@@ -75,7 +113,7 @@ Mordule[slot] : Dictionary {
      */
     clear {
         arg key;
-        this.at(key).clear();
+        this.clearIndex(this.indexOf(key));
     }
 
     /**
@@ -89,8 +127,8 @@ Mordule[slot] : Dictionary {
      */
     insert {
         arg key, value, scale = 1;
-        var k = this.at(key);
-        k.insert(value, scale);
+        this.enforceDestinations(key);
+        this.insertIndex(this.indexOf(key), value, scale);
     }
 
     /**
@@ -151,7 +189,7 @@ Mordule[slot] : Dictionary {
      */
     read {
         arg key, clip = 1, scale = 1;
-        ^ this.at(key).read(clip, scale);
+        ^ this.readIndex(this.indexOf(key), clip, scale);
     }
 
     /**
@@ -193,7 +231,9 @@ Mordule[slot] : Dictionary {
      */
     tap {
         arg key, clip = 1, scale = 1;
-        ^ this.at(key).tap(clip, scale);
+        this.enforceDestinations(key);
+        this.registerTap(key);
+        ^ this.tapIndex(this.indexOf(key), clip, scale);
     }
 
     /**
@@ -206,7 +246,8 @@ Mordule[slot] : Dictionary {
      */
     write {
         arg key, value;
-        ^ this.at(key).write(value);
+        this.enforceSources(key);
+        ^ this.writeIndex(this.indexOf(key), value);
     }
 
     /**
@@ -247,18 +288,39 @@ Mordule[slot] : Dictionary {
      */
     ensureBuffer {
         if (m_buffer.isNil) {
-            m_buffer = LocalBuf(keyList.size, m_channels).clear;
+            // Add 1 to account for nil index.
+            m_buffer = LocalBuf(keyList.size + includeNilIndex.asInteger, m_channels).clear;
         };
     }
 
     hasDestination {
-        arg key;
-        ^ (destinations.size == 0 || { destinations.includes(key); });
+        arg keys;
+        if (destinations.size == 0) {
+            ^ true;
+        };
+        keys = keys.asArray;
+        keys.do {
+            arg key;
+            if (destinations.includes(key).not && {this.isNilKey(key).not}) {
+                ^ key;
+            };
+        };
+        ^ true;
     }
 
     hasSource {
-        arg key;
-        ^ (sources.size == 0 || { sources.includes(key); });
+        arg keys;
+        if (sources.size == 0) {
+            ^ true;
+        };
+        keys = keys.asArray;
+        keys.do {
+            arg key;
+            if (sources.includes(key).not && {this.isNilKey(key).not}) {
+                ^ key;
+            };
+        };
+        ^ true;
     }
 
     /**
@@ -304,23 +366,17 @@ Mordule[slot] : Dictionary {
      */
     indexOf {
         arg key;
-        var index = keyList.indexOf(key);
+        var index;
+        if (includeNilIndex && {this.isNilKey(key)}) {
+            ^ 0;
+        };
+        index = keyList.indexOf(key);
         if (index.isNil) {
             Exception('There is no key ' ++ key ++ '.').throw;
         };
-        ^ index;
-    }
 
-    /**
-     * Generate indices dictionary after each value is added.
-     */
-    initIndicesDictionary {
-        var indices = Dictionary[];
-        keyList.do {
-            arg key, index;
-            indices[key] = index;
-        };
-        m_indices = indices;
+        // Add 1 because 0 is the nil index.
+        ^ index + includeNilIndex.asInteger;
     }
 
     /**
@@ -341,6 +397,9 @@ Mordule[slot] : Dictionary {
         var v;
         this.ensureBuffer();
         v = BufRd.kr(m_channels, m_buffer, index, 1, 0);
+        if (includeNilIndex) {
+            v = Select.kr(BinaryOpUGen('==', 0, index), [v, 0]);
+        };
         if (insertValue.isNil.not) {
             v = v + insertValue;
         };
@@ -373,20 +432,22 @@ Mordule[slot] : Dictionary {
     /**
      * Trigger a warning if the key is not a listed destination.
      */
-    warnDestinations {
+    enforceDestinations {
         arg key;
-        if (this.hasDestination.not) {
-            warn(key ++ ' is not a listed destination.');
+        var result = this.hasDestination(key);
+        if (result.isKindOf(Symbol)) {
+            Exception(result ++ ' is not a listed destination.').throw;
         };
     }
 
     /**
      * Trigger a warning if the key is not a listed source.
      */
-    warnSources {
+    enforceSources {
         arg key;
-        if (this.hasSource.not) {
-            warn(key ++ ' is not a listed source.');
+        var result = this.hasSource(key);
+        if (result.isKindOf(Symbol)) {
+            Exception(result ++ ' is not a listed source.').throw;
         };
     }
 
@@ -399,6 +460,9 @@ Mordule[slot] : Dictionary {
         if (value.size > m_channels) {
             warn('WARNING: adding more values than channels');
         };
+        if (includeNilIndex) {
+            value = Select.kr(BinaryOpUGen('==', index, 0), [value, 0]);
+        };
 
         // value should be an array for wrapExtend to work.
         value = if (value.isKindOf(Collection), {value}, {[value]});
@@ -406,57 +470,22 @@ Mordule[slot] : Dictionary {
 
         BufWr.kr(value, this.buffer, index);
     }
-}
 
-/**
- * Syntactical sugar to allow for syntaxes like:
- * myMordule[mod].tap()
- * myMordule.mod.tap()
- * @see Mordule
- */
-MorduleNode {
-
-    var mordule;
-    var index;
-    var key;
-
-    *new {
-        arg m, i, k;
-        ^ super.new.init(m, i, k);
-    }
-
-    init {
-        arg m, i, k;
-        mordule = m;
-        index = i;
-        key = k;
-    }
-
-    clear {
-        ^ mordule.clearIndex(index);
-    }
-
-    insert {
-        arg value, scale = 1;
-        mordule.warnDestinations(key);
-        ^ mordule.insertIndex(index, value, scale);
-    }
-
-    read {
-        arg clip = 1, scale = 1;
-        ^ mordule.readIndex(index, clip, scale);
-    }
-
-    tap {
-        arg clip = 1, scale = 1;
-        mordule.warnDestinations(key);
-        mordule.registerTap(key);
-        ^ mordule.tapIndex(index, clip, scale);
-    }
-
-    write {
-        arg value;
-        mordule.warnSources(key);
-        ^ mordule.writeIndex(index, value);
+    /**
+     * Determine if a mixed value should be interpreted as the nil index (the nil index is in every Mordule buffer, and is used to sink values that should not be modulated; this is useful for selectInsert, selectWrite, etc methods, when one of the options should be to do nothing). There are a few ways to indicate the nil index: 0, false, nil, and \nil are all acceptable.
+     * @param mixed key
+     *   The key to test.
+     * @return Boolean
+     *   true if the key should be seen as nil.
+     */
+    isNilKey {
+        arg key;
+        ^ (includeNilIndex.asBoolean && (key.isNil || {
+            key.asSymbol == \nil ||
+                { key === false || {
+                    key === 0
+                }
+            }
+        }));
     }
 }
