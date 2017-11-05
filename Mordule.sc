@@ -36,7 +36,7 @@ Mordule[slot] : Dictionary {
     at {
         arg key;
         if (this.indexOf(key).isNil.not) {
-            ^ MorduleNode.new(this, this.indexOf(key));
+            ^ MorduleNode.new(this, this.indexOf(key), key);
         };
     }
 
@@ -49,8 +49,7 @@ Mordule[slot] : Dictionary {
     }
 
     bufChannels {
-        this.ensureBuffer();
-        ^ BufChannels.kr(m_buffer);
+        ^ BufChannels.kr(this.buffer);
     }
 
     buffer {
@@ -59,13 +58,7 @@ Mordule[slot] : Dictionary {
     }
 
     bufFrames {
-        this.ensureBuffer();
-        ^ BufFrames.kr(m_buffer);
-    }
-
-    bufNum {
-        this.ensureBuffer();
-        ^ BufNum.kr(m_buffer);
+        ^ BufFrames.kr(this.buffer);
     }
 
     /**
@@ -96,7 +89,6 @@ Mordule[slot] : Dictionary {
      */
     insert {
         arg key, value, scale = 1;
-        var index;
         var k = this.at(key);
         k.insert(value, scale);
     }
@@ -243,7 +235,7 @@ Mordule[slot] : Dictionary {
         if (clip.isNil.not) {
             value = value.clip(clip.neg, clip);
         };
-        if (scale != 1 || { scale.isNil.not; }) {
+        if (scale != 1 && { scale.isNil.not; }) {
             value = value * scale;
         };
         ^ value;
@@ -255,7 +247,6 @@ Mordule[slot] : Dictionary {
      */
     ensureBuffer {
         if (m_buffer.isNil) {
-            'Creating fresh buffer'.postln;
             m_buffer = LocalBuf(keyList.size, m_channels).clear;
         };
     }
@@ -284,7 +275,6 @@ Mordule[slot] : Dictionary {
         arg n, keys;
         var a, select;
         a = this.indicesOf(keys);
-
         select = Select.kr(n, a);
         ^ select;
     }
@@ -316,8 +306,9 @@ Mordule[slot] : Dictionary {
         arg key;
         var index = keyList.indexOf(key);
         if (index.isNil) {
-            warn('There is no key ' ++ key ++ '.');
+            Exception('There is no key ' ++ key ++ '.').throw;
         };
+        ^ index;
     }
 
     /**
@@ -337,8 +328,9 @@ Mordule[slot] : Dictionary {
      */
     insertIndex {
         arg index, value, scale = 1;
-        var v = this.readIndex(index, nil, nil, value);
-        ^ this.writeIndex(index, v * scale);
+        var v;
+        v = this.readIndex(index, nil, nil, value * scale);
+        this.writeIndex(index, v);
     }
 
     /**
@@ -348,7 +340,7 @@ Mordule[slot] : Dictionary {
         arg index, clip = 1, scale = 1, insertValue = nil;
         var v;
         this.ensureBuffer();
-        v = BufRd.kr(BufChannels.ir(m_buffer), m_buffer, index, loop: 1, interpolation: 1);
+        v = BufRd.kr(m_channels, m_buffer, index, 1, 0);
         if (insertValue.isNil.not) {
             v = v + insertValue;
         };
@@ -372,8 +364,9 @@ Mordule[slot] : Dictionary {
      */
     tapIndex {
         arg index, clip = 1, scale = 1;
-        var v = this.readIndex(index, clip, scale);
-        this.clear(index);
+        var v;
+        v = this.readIndex(index, clip, scale);
+        this.clearIndex(index);
         ^ v;
     }
 
@@ -406,9 +399,12 @@ Mordule[slot] : Dictionary {
         if (value.size > m_channels) {
             warn('WARNING: adding more values than channels');
         };
+
+        // value should be an array for wrapExtend to work.
         value = if (value.isKindOf(Collection), {value}, {[value]});
         value = wrapExtend(value, m_channels);
-        ^ BufWr.kr(value, m_buffer, index);
+
+        BufWr.kr(value, this.buffer, index);
     }
 }
 
@@ -442,8 +438,8 @@ MorduleNode {
 
     insert {
         arg value, scale = 1;
-        //mordule.warnDestinations(key);
-        ^ mordule.insertIndex(key, value, scale);
+        mordule.warnDestinations(key);
+        ^ mordule.insertIndex(index, value, scale);
     }
 
     read {
