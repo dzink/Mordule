@@ -178,6 +178,15 @@ Mordule {
     }
 
     /**
+     * Like @see insertSelect, only scales n appropriately from -1..1 to the number of keys.
+     */
+    insertSelectRange {
+        arg n, keys, value, scale = 1;
+        n = n.range(0, keys.size + 1).floor;
+        this.insertSelect(n, keys, value, scale);
+    }
+
+    /**
      * Read the value at one modulation key, and add it to another modulation
      * key. Useful for flexible modulation matrices, such as in an MS2000.
      * @param UGen inIndex
@@ -194,10 +203,20 @@ Mordule {
      *   A modifier to scale the amount to add to the destination.
      */
     matrixReadAndInsert {
-        arg inIndex, inKeys, outIndex, outKeys, scale = 1;
+        arg sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale = 1;
         var v;
-        v = this.readSelect(inIndex, inKeys);
-        this.insertSelect(outIndex, outKeys, v * scale);
+        v = this.readSelect(sourceIndex, sourceKeys);
+        this.insertSelect(destinationIndex, destinationKeys, v * scale);
+    }
+
+    /**
+     * Like @see insertSelect, only scales indices appropriately from -1..1 to the number of keys.
+     */
+    matrixReadAndInsertRange {
+        arg sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale = 1;
+        sourceIndex = sourceIndex.range(0, sourceKeys.size).floor;
+        destinationIndex = destinationIndex.range(0, destinationKeys.size).floor;
+        this.matrixReadAndInsert(sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale);
     }
 
     /**
@@ -254,6 +273,14 @@ Mordule {
         index = this.indexSelect(n, keys);
         ^ this.readIndex(index, clip, scale);
     }
+    /**
+     * Like @see readSelect, only scales n appropriately from -1..1 to the number of keys.
+     */
+    readSelectRange {
+        arg n, keys, clip = 1, scale = 1;
+        n = n.range(0, keys.size).floor;
+        ^ this.readSelect(n, keys, clip, scale);
+    }
 
     /**
      * Reads from a modulation destination key then clears the value.
@@ -304,6 +331,15 @@ Mordule {
         index = this.indexSelect(n, keys);
         ^ this.writeIndex(index, value);
     }
+
+    /**
+     * Like @see writeSelect, only scales n appropriately from -1..1 to the number of keys.
+     */
+     writeSelectRange {
+         arg n, keys, value;
+         n = n.range(0, keys.size).floor;
+         ^ this.writeSelect(n, keys, value);
+     }
 
     clearIndex {
         arg index;
