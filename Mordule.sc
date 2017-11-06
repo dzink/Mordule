@@ -176,6 +176,59 @@ Mordule {
         this.insertIndex(this.indexOf(key), value, scale);
     }
 
+
+    /**
+     * Reads one modulation source and inserts it directly into a destination.
+     */
+    insertFromSource {
+        arg sourceKey, destinationKey, scale = 1;
+        var source;
+
+        // No need to enforceDestinations, that is done via insert.
+        this.enforceSources(sourceKey);
+        source = this.read(sourceKey);
+        this.insert(destinationKey, source, scale);
+    }
+
+    /**
+     * Read the value at one modulation key, and add it to another modulation
+     * key. Useful for flexible modulation matrices, such as in an MS2000.
+     * @param UGen inIndex
+     *   A modulatable index suitable for use in Select.kr which will select
+     *   the source modulation key.
+     * @param Array inKeys
+     *   An array of source modulation key Symbols.
+     * @param UGen outIndex
+     *   A modulatable index suitable for use in Select.kr which will select
+     *   the destination modulation key.
+     * @param Array outKeys
+     *   An array of destination modulation key Symbols.
+     * @param float scale;
+     *   A modifier to scale the amount to add to the destination.
+     */
+    insertFromSourceMatrix {
+        arg sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale = 1;
+        var v;
+
+        // Destinations are enforced in insertSelect.
+        this.enforceSources(sourceKeys);
+
+        v = this.readSelect(sourceIndex, sourceKeys);
+        this.insertSelect(destinationIndex, destinationKeys, v * scale);
+    }
+
+    /**
+     * Like @see insertSelect, only scales indices appropriately from -1..1 to
+     * the number of keys.
+     */
+    insertFromSourceMatrixRange {
+        arg sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale = 1;
+        sourceIndex = sourceIndex.range(0, sourceKeys.size).floor;
+        destinationIndex = destinationIndex.range(0, destinationKeys.size).floor;
+        this.insertFromSourceMatrix(sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale);
+    }
+
+
     /**
      * Add to the running total of one of list of modulation keys. When n is 0,
      * it will increase the first modulation key in the list; when n is 1, it
@@ -208,44 +261,6 @@ Mordule {
     }
 
     /**
-     * Read the value at one modulation key, and add it to another modulation
-     * key. Useful for flexible modulation matrices, such as in an MS2000.
-     * @param UGen inIndex
-     *   A modulatable index suitable for use in Select.kr which will select
-     *   the source modulation key.
-     * @param Array inKeys
-     *   An array of source modulation key Symbols.
-     * @param UGen outIndex
-     *   A modulatable index suitable for use in Select.kr which will select
-     *   the destination modulation key.
-     * @param Array outKeys
-     *   An array of destination modulation key Symbols.
-     * @param float scale;
-     *   A modifier to scale the amount to add to the destination.
-     */
-    matrixReadAndInsert {
-        arg sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale = 1;
-        var v;
-
-        // Destinations are enforced in insertSelect.
-        this.enforceSources(sourceKeys);
-
-        v = this.readSelect(sourceIndex, sourceKeys);
-        this.insertSelect(destinationIndex, destinationKeys, v * scale);
-    }
-
-    /**
-     * Like @see insertSelect, only scales indices appropriately from -1..1 to
-     * the number of keys.
-     */
-    matrixReadAndInsertRange {
-        arg sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale = 1;
-        sourceIndex = sourceIndex.range(0, sourceKeys.size).floor;
-        destinationIndex = destinationIndex.range(0, destinationKeys.size).floor;
-        this.matrixReadAndInsert(sourceIndex, sourceKeys, destinationIndex, destinationKeys, scale);
-    }
-
-    /**
      * Reads from a modulation destination or source key.
      * @param Symbol key
      *   The key to read from.
@@ -261,19 +276,6 @@ Mordule {
     read {
         arg key, clip = 1, scale = 1;
         ^ this.readIndex(this.indexOf(key), clip, scale);
-    }
-
-    /**
-     * Reads one modulation source and inserts it directly into a destination.
-     */
-    readAndInsert {
-        arg sourceKey, destinationKey, scale = 1;
-        var source;
-
-        // No need to enforceDestinations, that is done via insert.
-        this.enforceSources(sourceKey);
-        source = this.read(sourceKey);
-        this.insert(destinationKey, source, scale);
     }
 
     /**
@@ -517,6 +519,11 @@ Mordule {
         this.writeIndex(index, v);
     }
 
+    readBuffer {
+        arg index;
+        ^ BufRd.kr(channels, buffer, index, 1, 0);
+    }
+
     /**
      * @see read, only uses a buffer index instead of a modulation key.
      */
@@ -524,7 +531,7 @@ Mordule {
         arg index, clip = 1, scale = 1, insertValue = nil;
         var v;
         this.ensureBuffer();
-        v = BufRd.kr(channels, buffer, index, 1, 0);
+        v = this.readBuffer(index);
         if (includeNilIndex) {
             v = Select.kr(BinaryOpUGen('==', 0, index), [v, 0]);
         };
