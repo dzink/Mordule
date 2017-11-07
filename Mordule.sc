@@ -218,7 +218,7 @@ Mordule {
     }
 
     /**
-     * Like @see insertSelect, only scales indices appropriately from -1..1 to
+     * Like @see insertSelect, only normalizes indices appropriately from -1..1 to
      * the number of keys.
      */
     insertFromSourceMatrixRange {
@@ -251,7 +251,7 @@ Mordule {
     }
 
     /**
-     * Like @see insertSelect, only scales n appropriately from -1..1 to the
+     * Like @see insertSelect, only normalizes n appropriately from -1..1 to the
      * number of keys.
      */
     insertSelectRange {
@@ -264,18 +264,15 @@ Mordule {
      * Reads from a modulation destination or source key.
      * @param Symbol key
      *   The key to read from.
-     * @param float clip
-     *   The number from [clip.neg, clip] to clamp values between. Set to nil
-     *   to not clip.
-     * @param float scale
-     *   The amount to scale the returned value by. Set to nil or 1 to not
-     *   scale.
+     * @param float mul
+     *   The amount to mul the returned value by. Set to nil or 1 to not
+     *   mul.
      * @return UGen
      *   The value of a modulation source key.
      */
     read {
-        arg key, clip = 1, scale = 1;
-        ^ this.readIndex(this.indexOf(key), clip, scale);
+        arg key, mul = 1;
+        ^ this.readIndex(this.indexOf(key), mul);
     }
 
     /**
@@ -286,49 +283,43 @@ Mordule {
      *   The index of the modulation key that should be added to.
      * @param Array keys
      *   The list of modulation key Symbols.
-     * @param float clip
-     *   The number from [clip.neg, clip] to clamp values between. Set to nil
-     *   to not clip.
-     * @param float scale
-     *   The amount to scale the returned value by. Set to nil or 1 to not
-     *   scale.
+     * @param float mul
+     *   The amount to mul the returned value by. Set to nil or 1 to not
+     *   mul.
      * @return UGen
      *   The value of a modulation source key.
      */
     readSelect {
-        arg n, keys, clip = 1, scale = 1;
+        arg n, keys, mul = 1;
         var index;
         index = this.indexSelect(n, keys);
-        ^ this.readIndex(index, clip, scale);
+        ^ this.readIndex(index, mul);
     }
     /**
-     * Like @see readSelect, only scales n appropriately from -1..1 to the
+     * Like @see readSelect, only normalizes n appropriately from -1..1 to the
      * number of keys.
      */
     readSelectRange {
-        arg n, keys, clip = 1, scale = 1;
+        arg n, keys, mul = 1;
         n = n.range(0, keys.size).floor;
-        ^ this.readSelect(n, keys, clip, scale);
+        ^ this.readSelect(n, keys, mul);
     }
 
     /**
      * Reads from a modulation destination key then clears the value.
      * @param Symbol key
      *   The key to read from.
-     * @param float clip
-     *   The number from [clip.neg, clip] to clamp values between. Set to nil
-     *   to not clip.
-     * @param float scale
-     *   The amount to scale the returned value by. Set to nil or 1 to not
-     *   scale.
+     * @param float mul
+     *   The amount to mul the returned value by. Set to nil or 1 to not
+     *   mul.
      * @return UGen
      *   The value of a modulation source key.
      */
     tap {
-        arg key, clip = 1, scale = 1;
+        arg key, mul = 1;
         this.enforceDestinations(key);
         this.registerTap(key);
-        ^ this.tapIndex(this.indexOf(key), clip, scale);
+        ^ this.tapIndex(this.indexOf(key), mul);
     }
 
     /**
@@ -363,7 +354,7 @@ Mordule {
     }
 
     /**
-     * Like @see writeSelect, only scales n appropriately from -1..1 to the
+     * Like @see writeSelect, only normalizes n appropriately from -1..1 to the
      * number of keys.
      */
      writeSelectRange {
@@ -380,14 +371,11 @@ Mordule {
         this.writeIndex(index, 0);
     }
 
-    // This saves a few cycles by determining if scaling/clipping is needed.
-    clipAndScale {
-        arg value, clip = 1, scale = 1;
-        if (clip.isNil.not) {
-            value = value.clip(clip.neg, clip);
-        };
-        if (scale != 1 && { scale.isNil.not; }) {
-            value = value * scale;
+    // This saves a few cycles by determining if scaling is needed.
+    mul {
+        arg value, mul = 1;
+        if (mul != 1 && { mul.isNil.not; }) {
+            value = value * mul;
         };
         ^ value;
     }
@@ -515,7 +503,7 @@ Mordule {
     insertIndex {
         arg index, value, scale = 1;
         var v;
-        v = this.readIndex(index, nil, nil, value * scale);
+        v = this.readIndex(index, nil, value * scale);
         this.writeIndex(index, v);
     }
 
@@ -528,7 +516,7 @@ Mordule {
      * @see read, only uses a buffer index instead of a modulation key.
      */
     readIndex {
-        arg index, clip = 1, scale = 1, insertValue = nil;
+        arg index, mul = 1, insertValue = nil;
         var v;
         this.ensureBuffer();
         v = this.readBuffer(index);
@@ -538,7 +526,7 @@ Mordule {
         if (insertValue.isNil.not) {
             v = v + insertValue;
         };
-        ^ this.clipAndScale(v, clip, scale);
+        ^ this.mul(v, mul);
     }
 
     /**
@@ -557,9 +545,9 @@ Mordule {
      * @see tap, only uses a buffer index instead of a modulation key.
      */
     tapIndex {
-        arg index, clip = 1, scale = 1;
+        arg index, mul = 1;
         var v;
-        v = this.readIndex(index, clip, scale);
+        v = this.readIndex(index, mul);
         this.clearIndex(index);
         ^ v;
     }
