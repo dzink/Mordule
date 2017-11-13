@@ -589,7 +589,7 @@ Mordule {
 
         // value should be an array for wrapExtend to work.
         value = if (value.isKindOf(Collection), {value}, {[value]});
-        value = wrapExtend(value, channels);
+        value = value.wrapExtend(channels);
 
         BufWr.kr(value, this.buffer, index);
     }
