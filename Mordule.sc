@@ -39,6 +39,16 @@ Mordule {
     ^ super.new.init(sources, targets, channels, buffer, includeNilIndex);
   }
 
+  *kr {
+    arg sources, targets, channels = 1, buffer = nil, includeNilIndex = true;
+    ^ super.new.init(sources, targets, channels, buffer, includeNilIndex);
+  }
+
+  *ar {
+    arg sources, targets, channels = 1, buffer = nil, includeNilIndex = true;
+    ^ super.new.initAr(sources, targets, channels, buffer, includeNilIndex);
+  }
+
   init {
     arg a_sources, a_targets, a_channels, a_buffer, a_includeNilIndex;
 
@@ -46,6 +56,18 @@ Mordule {
     // immediately below.
     sourceBuffer = MorduleBuffer(a_sources);
     targetBuffer = MorduleBuffer(a_targets);
+    this.includeNilIndex = a_includeNilIndex.asBoolean;
+    this.channels = a_channels;
+    ^ this;
+  }
+
+  initAr {
+    arg a_sources, a_targets, a_channels, a_buffer, a_includeNilIndex;
+
+    // Don't worry about channels or nilIndex in constructors, they're re-set
+    // immediately below.
+    sourceBuffer = MorduleBufferAr(a_sources, a_channels);
+    targetBuffer = MorduleBufferAr(a_targets, a_channels);
     this.includeNilIndex = a_includeNilIndex.asBoolean;
     this.channels = a_channels;
     ^ this;
@@ -143,7 +165,7 @@ Mordule {
   }
 
   /**
-   * Insert a value into a random target.
+   * Insert a value into a selectable target.
    * @param Array subkeys
    *   An array of keys which are available to be chosen between. All keys by
    *   default.
@@ -162,7 +184,7 @@ Mordule {
   }
 
   /**
-   * Connect a named source to a random target.
+   * Connect a named source to a selectable target.
    */
   connectSelectTarget {
     arg source, index, subkeys = nil, mul = 1;
@@ -172,7 +194,7 @@ Mordule {
   }
 
   /**
-   * Connect a random source to a named target.
+   * Connect a selectable source to a named target.
    */
   connectSelectSource {
     arg sourceIndex, target, subkeys = nil, mul = 1, add = 0;
@@ -181,6 +203,9 @@ Mordule {
     ^ this;
   }
 
+  /**
+   * Connect a selectable source to a selectable target.
+   */
   connectDoubleSelect {
     arg sourceIndex, targetIndex, sourceSubKeys = nil, targetSubkeys = nil, mul = 1, add = 0;
     var value = this.readSelectSource(sourceIndex, sourceSubKeys);
